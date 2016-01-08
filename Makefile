@@ -7,7 +7,7 @@
 # Your compiler location may vary.
 WIN32_CC=/usr/bin/i586-mingw32msvc-gcc
 
-CC=gcc
+CC=cc
 CFLAGS=-Wall -pedantic -s -O3
 SRCDIR=nailgun-client
 PREFIX=/usr/local
