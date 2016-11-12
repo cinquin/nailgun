@@ -546,7 +546,14 @@ public class NGServer implements Runnable {
         server.getServerSocket().close();
 
         if (daemon) {
-            new Daemon().all(true);
+            Daemon d = new Daemon();
+            if (!d.isDaemonized()) {
+                int pid = d.daemonize();
+                System.out.println("PID=" + pid);
+                System.exit(0);
+            } else {
+                d.init();
+            }
         }
 
         Thread t = new Thread(server);
