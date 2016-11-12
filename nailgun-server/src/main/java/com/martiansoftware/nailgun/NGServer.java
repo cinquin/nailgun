@@ -17,6 +17,7 @@
  */
 package com.martiansoftware.nailgun;
 
+import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
 import java.lang.reflect.Method;
@@ -24,11 +25,12 @@ import java.net.InetAddress;
 import java.net.ServerSocket;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.Arrays;
 import java.util.Iterator;
 import java.util.Map;
 
 import com.martiansoftware.nailgun.builtins.DefaultNail;
-import java.util.Properties;
+import com.sun.akuma.Daemon;
 
 /**
  * <p>Listens for new connections from NailGun clients and launches NGSession
@@ -55,7 +57,7 @@ public class NGServer implements Runnable {
     /**
      * The socket doing the listening
      */
-    private ServerSocket serversocket;
+    private ServerSocket serverSocket;
     
     /**
      * True if this NGServer has received instructions to shut down
@@ -332,7 +334,7 @@ public class NGServer implements Runnable {
         }
 
         try {
-            serversocket.close();
+            serverSocket.close();
         } catch (Throwable toDiscard) {
         }
 
@@ -392,7 +394,21 @@ public class NGServer implements Runnable {
      * @return the port on which this server is (or will be) listening.
      */
     public int getPort() {
-        return ((serversocket == null) ? listeningAddress.getInetPort() : serversocket.getLocalPort());
+        return ((serverSocket == null) ? listeningAddress.getInetPort() : serverSocket.getLocalPort());
+    }
+
+    public ServerSocket getServerSocket() throws IOException {
+	final ServerSocket result;
+	if (listeningAddress.isInetAddress()) {
+	    if (listeningAddress.getInetAddress() == null) {
+		result = new ServerSocket(listeningAddress.getInetPort());
+	    } else {
+		result = new ServerSocket(listeningAddress.getInetPort(), 0, listeningAddress.getInetAddress());
+	    }
+	} else {
+	    result = new NGUnixDomainServerSocket(listeningAddress.getLocalAddress());
+	}
+	return result;
     }
 
     /**
@@ -418,18 +434,10 @@ public class NGServer implements Runnable {
         }
 
         try {
-            if (listeningAddress.isInetAddress()) {
-                if (listeningAddress.getInetAddress() == null) {
-                    serversocket = new ServerSocket(listeningAddress.getInetPort());
-                } else {
-                    serversocket = new ServerSocket(listeningAddress.getInetPort(), 0, listeningAddress.getInetAddress());
-                }
-            } else {
-                serversocket = new NGUnixDomainServerSocket(listeningAddress.getLocalAddress());
-            }
+            serverSocket = getServerSocket();
             while (!shutdown) {
                 sessionOnDeck = sessionPool.take();
-                Socket socket = serversocket.accept();
+                Socket socket = serverSocket.accept();
                 sessionOnDeck.run(socket);
             }
 
@@ -448,11 +456,11 @@ public class NGServer implements Runnable {
     }
 
     private static void usage() {
-        System.err.println("Usage: java com.martiansoftware.nailgun.NGServer");
-        System.err.println("   or: java com.martiansoftware.nailgun.NGServer port");
-        System.err.println("   or: java com.martiansoftware.nailgun.NGServer IPAddress");
-        System.err.println("   or: java com.martiansoftware.nailgun.NGServer IPAddress:port");
-        System.err.println("   or: java com.martiansoftware.nailgun.NGServer IPAddress:port timeout");
+        System.err.println("Usage: java com.martiansoftware.nailgun.NGServer [--daemon]");
+        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--daemon] port");
+        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--daemon] IPAddress");
+        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--daemon] IPAddress:port");
+        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--daemon] IPAddress:port timeout");
     }
 
     /**
@@ -466,12 +474,22 @@ public class NGServer implements Runnable {
      * listen.
      * @throws NumberFormatException if a non-numeric port is specified
      */
-    public static void main(String[] args) throws NumberFormatException, UnknownHostException {
+    public static void main(String[] args0) throws
+            NumberFormatException, UnknownHostException, Exception {
 
-        if (args.length > 2) {
-            usage();
-            return;
-        }
+	final String[] args;
+	final boolean daemon;
+	if (args0.length > 0 && args0[0].equals("--daemon")) {
+	    args = (String[]) Arrays.copyOfRange(args0, 1, args0.length);
+	    daemon = true;
+	} else {
+	    args = args0;
+	    daemon = false;
+	}
+	if (args.length > 2) {
+	    usage();
+	    return;
+	}
 
         // null server address means bind to everything local
         NGListeningAddress listeningAddress;
@@ -519,6 +537,18 @@ public class NGServer implements Runnable {
         }
 
         NGServer server = new NGServer(listeningAddress, DEFAULT_SESSIONPOOLSIZE, timeoutMillis);
+
+        //Before daemonizing, check if socket can be created (there could be race
+        //conditions with the address being claimed by another process before the daemonized
+        //version gets here, but at least this catches some problems early and propagates
+        //the error to the caller)
+
+        server.getServerSocket().close();
+
+        if (daemon) {
+            new Daemon().all(true);
+        }
+
         Thread t = new Thread(server);
         t.setName("NGServer(" + listeningAddress.toString() + ")");
         t.start();
