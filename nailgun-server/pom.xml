@@ -39,7 +39,7 @@
       <dependency>
         <groupId>com.github.cinquin</groupId>
         <artifactId>akuma</artifactId>
-        <version>3b8827c487273a8a96cdc0810749419d88e08795</version>
+        <version>5ed492d0f3017b00d424770fc826b10c8749542a</version>
       </dependency>
     </dependencies>
 
