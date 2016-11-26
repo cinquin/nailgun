@@ -182,6 +182,7 @@ public class NGSession extends Thread {
     public void run() {
 
         updateThreadName(null);
+        Thread.interrupted();//Clear interrupted status
 
         Socket socket = nextSocket();
         while (socket != null) {
@@ -384,6 +385,7 @@ public class NGSession extends Thread {
             ((ThreadLocalPrintStream) System.err).init(null);
 
             updateThreadName(null);
+            Thread.interrupted();//Clear interrupted status
             sessionPool.give(this);
             socket = nextSocket();
         }
