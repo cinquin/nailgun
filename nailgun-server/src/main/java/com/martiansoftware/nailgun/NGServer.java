@@ -20,6 +20,8 @@ package com.martiansoftware.nailgun;
 import java.io.IOException;
 import java.io.InputStream;
 import java.io.PrintStream;
+import java.io.PrintWriter;
+import java.lang.management.ManagementFactory;
 import java.lang.reflect.Method;
 import java.net.InetAddress;
 import java.net.ServerSocket;
@@ -30,7 +32,7 @@ import java.util.Iterator;
 import java.util.Map;
 
 import com.martiansoftware.nailgun.builtins.DefaultNail;
-import com.sun.akuma.Daemon;
+
 
 /**
  * <p>Listens for new connections from NailGun clients and launches NGSession
@@ -109,6 +111,11 @@ public class NGServer implements Runnable {
      * a collection of all classes executed by this server so far
      */
     private Map allNailStats = null;
+   
+    /**
+     * File to which to write PID once the server is ready
+     */
+    private String pidFile;
     
     /**
      * Remember the security manager we start with so we can restore it later
@@ -129,8 +136,9 @@ public class NGServer implements Runnable {
      * @param sessionPoolSize the max number of idle sessions allowed by the
      * pool
      */
-    public NGServer(InetAddress addr, int port, int sessionPoolSize, int timeoutMillis) {
-        init(new NGListeningAddress(addr, port), sessionPoolSize, timeoutMillis);
+    public NGServer(InetAddress addr, int port, int sessionPoolSize, int timeoutMillis,
+            String pidFile) {
+        init(new NGListeningAddress(addr, port), sessionPoolSize, timeoutMillis, pidFile);
     }
 
     /**
@@ -145,7 +153,8 @@ public class NGServer implements Runnable {
      * @param port the port on which to listen.
      */
     public NGServer(InetAddress addr, int port) {
-        init(new NGListeningAddress(addr, port), DEFAULT_SESSIONPOOLSIZE, NGConstants.HEARTBEAT_TIMEOUT_MILLIS);
+        init(new NGListeningAddress(addr, port), DEFAULT_SESSIONPOOLSIZE,
+            NGConstants.HEARTBEAT_TIMEOUT_MILLIS, null);
     }
 
     /**
@@ -156,7 +165,8 @@ public class NGServer implements Runnable {
      * <code>NGServer</code> and start it.
      */
     public NGServer() {
-        init(new NGListeningAddress(null, NGConstants.DEFAULT_PORT), DEFAULT_SESSIONPOOLSIZE, NGConstants.HEARTBEAT_TIMEOUT_MILLIS);
+        init(new NGListeningAddress(null, NGConstants.DEFAULT_PORT), DEFAULT_SESSIONPOOLSIZE,
+            NGConstants.HEARTBEAT_TIMEOUT_MILLIS, null);
     }
 
     /**
@@ -171,9 +181,10 @@ public class NGServer implements Runnable {
      * pool
      * @param timeoutMillis timeout in millis to wait for a heartbeat from the client
      * before disconnecting them
+     * @param pidFile
      */
-    public NGServer(NGListeningAddress listeningAddress, int sessionPoolSize, int timeoutMillis) {
-        init(listeningAddress, sessionPoolSize, timeoutMillis);
+    public NGServer(NGListeningAddress listeningAddress, int sessionPoolSize, int timeoutMillis, String pidFile) {
+        init(listeningAddress, sessionPoolSize, timeoutMillis, pidFile);
     }
 
     /**
@@ -184,8 +195,10 @@ public class NGServer implements Runnable {
      * @param sessionPoolSize the max number of idle sessions allowed by the
      * pool
      */
-    private void init(NGListeningAddress listeningAddress, int sessionPoolSize, int timeoutMillis) {
+    private void init(NGListeningAddress listeningAddress, int sessionPoolSize, int timeoutMillis,
+	    String pidFile) {
         this.listeningAddress = listeningAddress;
+        this.pidFile = pidFile;
 
         this.aliasManager = new AliasManager();
         allNailStats = new java.util.HashMap();
@@ -435,6 +448,14 @@ public class NGServer implements Runnable {
 
         try {
             serverSocket = getServerSocket();
+            if (pidFile != null) {
+                //TODO Switch to Process API when Java 9 is out
+                String name = ManagementFactory.getRuntimeMXBean().getName();
+                String pidString = name.split("@")[0] + "\n";
+                PrintWriter pidOut = new PrintWriter(pidFile);
+                pidOut.write(pidString);
+                pidOut.close();
+            }
             while (!shutdown) {
                 sessionOnDeck = sessionPool.take();
                 Socket socket = serverSocket.accept();
@@ -456,11 +477,11 @@ public class NGServer implements Runnable {
     }
 
     private static void usage() {
-        System.err.println("Usage: java com.martiansoftware.nailgun.NGServer [--daemon]");
-        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--daemon] port");
-        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--daemon] IPAddress");
-        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--daemon] IPAddress:port");
-        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--daemon] IPAddress:port timeout");
+        System.err.println("Usage: java com.martiansoftware.nailgun.NGServer [--writePID pidFile]");
+        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--writePID pidFile] port");
+        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--writePID pidFile] IPAddress");
+        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--writePID pidFile] IPAddress:port");
+        System.err.println("   or: java com.martiansoftware.nailgun.NGServer [--writePID pidFile] IPAddress:port timeout");
     }
 
     /**
@@ -478,15 +499,19 @@ public class NGServer implements Runnable {
             NumberFormatException, UnknownHostException, Exception {
 
 	final String[] args;
-	final boolean daemon;
-	if (args0.length > 0 && args0[0].equals("--daemon")) {
-	    args = (String[]) Arrays.copyOfRange(args0, 1, args0.length);
-	    daemon = true;
+	final String pidFile;
+	if (args0.length > 0 && args0[0].equals("--writePID")) {
+	    if (args0.length < 2) {
+		usage();
+		return;
+	    }
+	    pidFile = args0[1];
+	    args = (String[]) Arrays.copyOfRange(args0, 2, args0.length);
 	} else {
 	    args = args0;
-	    daemon = false;
+	    pidFile = null;
 	}
-	if (args.length > 2) {
+	if (args.length > 3) {
 	    usage();
 	    return;
 	}
@@ -536,25 +561,7 @@ public class NGServer implements Runnable {
             listeningAddress = new NGListeningAddress(null, NGConstants.DEFAULT_PORT);
         }
 
-        NGServer server = new NGServer(listeningAddress, DEFAULT_SESSIONPOOLSIZE, timeoutMillis);
-
-        //Before daemonizing, check if socket can be created (there could be race
-        //conditions with the address being claimed by another process before the daemonized
-        //version gets here, but at least this catches some problems early and propagates
-        //the error to the caller)
-
-        server.getServerSocket().close();
-
-        if (daemon) {
-            Daemon d = new Daemon.WithoutChdir();
-            if (!d.isDaemonized()) {
-                int pid = d.daemonize();
-                System.out.println("PID=" + pid);
-                System.exit(0);
-            } else {
-                d.init();
-            }
-        }
+        NGServer server = new NGServer(listeningAddress, DEFAULT_SESSIONPOOLSIZE, timeoutMillis, pidFile);
 
         Thread t = new Thread(server);
         t.setName("NGServer(" + listeningAddress.toString() + ")");

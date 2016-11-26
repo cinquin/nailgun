@@ -23,23 +23,11 @@
         <version>0.9.2-SNAPSHOT</version>
     </parent>
 
-    <repositories>
-        <repository>
-             <id>jitpack.io</id>
-             <url>https://jitpack.io</url>
-        </repository>
-    </repositories>
-
     <dependencies>
       <dependency>
         <groupId>net.java.dev.jna</groupId>
         <artifactId>jna</artifactId>
         <version>4.1.0</version>
-      </dependency>
-      <dependency>
-        <groupId>com.github.cinquin</groupId>
-        <artifactId>akuma</artifactId>
-        <version>5ed492d0f3017b00d424770fc826b10c8749542a</version>
       </dependency>
     </dependencies>
 
