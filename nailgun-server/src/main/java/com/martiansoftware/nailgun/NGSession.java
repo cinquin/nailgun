@@ -1,4 +1,4 @@
-/*   
+/*
 
  Copyright 2004-2012, Martian Software, Inc.
 
@@ -98,13 +98,13 @@ public class NGSession extends Thread {
 
         nailMainSignature = new Class[1];
         nailMainSignature[0] = NGContext.class;
-        
+
         try {
             classLoader = NGSession.class.getClassLoader();
         } catch (SecurityException e) {
             throw e;
         }
-        
+
     }
 
     /**
@@ -201,7 +201,7 @@ public class NGSession extends Thread {
                     int bytesToRead = sockin.readInt();
                     byte chunkType = sockin.readByte();
 
-                    byte[] b = new byte[(int) bytesToRead];
+                    byte[] b = new byte[bytesToRead];
                     sockin.readFully(b);
                     String line = new String(b, "UTF-8");
 
@@ -348,6 +348,7 @@ public class NGSession extends Thread {
 
                     } catch (NGExitException exitEx) {
                         in.close();
+                        in = null;
                         exit.println(exitEx.getStatus());
                         server.out.println(Thread.currentThread().getName() + " exited with status " + exitEx.getStatus());
                     } catch (Throwable t) {

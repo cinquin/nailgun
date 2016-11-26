@@ -1,4 +1,4 @@
-/*   
+/*
 
   Copyright 2004-2012, Martian Software, Inc.
 
@@ -18,16 +18,28 @@
 
 package com.martiansoftware.nailgun;
 
-import java.io.*;
+import java.io.ByteArrayInputStream;
+import java.io.Closeable;
+import java.io.DataInputStream;
+import java.io.DataOutputStream;
+import java.io.FilterInputStream;
+import java.io.IOException;
+import java.io.InputStream;
+import java.io.PrintStream;
 import java.util.HashSet;
 import java.util.Iterator;
 import java.util.Set;
-import java.util.concurrent.*;
+import java.util.concurrent.ExecutionException;
+import java.util.concurrent.ExecutorService;
+import java.util.concurrent.Executors;
+import java.util.concurrent.Future;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.TimeoutException;
 
 /**
  * A FilterInputStream that is able to read the chunked stdin stream
  * from a NailGun client.
- * 
+ *
  * @author <a href="http://www.martiansoftware.com/contact.html">Marty Lamb</a>
  */
 public class NGInputStream extends FilterInputStream implements Closeable {
@@ -151,7 +163,9 @@ public class NGInputStream extends FilterInputStream implements Closeable {
      */
     public synchronized void close() {
         readEof();
-		readFuture.cancel(true);
+        if (!readFuture.isDone()) {
+            readFuture.cancel(true);
+        }
         executor.shutdownNow();
 	}
 
